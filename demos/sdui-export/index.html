@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDUI + SheetJS Export Demo</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; color: #1e293b; }
+.header { background: #1e293b; color: white; padding: 20px 32px; display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 20px; font-weight: 600; }
+.badge { background: #3b82f6; color: white; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+.container { max-width: 1100px; margin: 32px auto; padding: 0 24px; }
+.card { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+.card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #1e293b; }
+.flow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+.step { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 16px; font-size: 13px; color: #1d4ed8; font-weight: 500; }
+.arrow { color: #94a3b8; font-size: 18px; }
+.controls { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+btn, .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; border: 1px solid transparent; font-size: 13px; font-weight: 500; cursor: pointer; }
+.btn-primary { background: #2563eb; color: white; border-color: #2563eb; }
+.btn-primary:hover { background: #1d4ed8; }
+.btn-success { background: #16a34a; color: white; border-color: #16a34a; }
+.btn-success:hover { background: #15803d; }
+.btn-outline { background: white; color: #374151; border-color: #d1d5db; }
+.btn-outline:hover { background: #f9fafb; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f8fafc; text-align: left; padding: 10px 12px; font-weight: 600; color: #64748b; border-bottom: 2px solid #e2e8f0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; }
+tr:hover td { background: #f8fafc; }
+.status { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.status-aktiv { background: #dcfce7; color: #16a34a; }
+.status-inaktiv { background: #fef2f2; color: #dc2626; }
+.status-ausstehend { background: #fef9c3; color: #ca8a04; }
+.status-abgeschlossen { background: #eff6ff; color: #2563eb; }
+.info { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #0369a1; margin-bottom: 16px; }
+.code-block { background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 16px; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.6; overflow-x: auto; margin-bottom: 12px; }
+.code-block .kw { color: #93c5fd; } .code-block .str { color: #86efac; } .code-block .cm { color: #64748b; }
+</style>
+</head>
+<body>
+<div class="header">
+  <span>&#128737;</span>
+  <h1>Byblos CRM — SDUI + SheetJS Export</h1>
+  <span class="badge">Demo</span>
+</div>
+<div class="container">
+  <div class="card">
+    <h2>&#127381; How it works</h2>
+    <div class="flow">
+      <div class="step">1. Server returns SDUI config (JSON)</div>
+      <span class="arrow">&rarr;</span>
+      <div class="step">2. Client renders table from JSON</div>
+      <span class="arrow">&rarr;</span>
+      <div class="step">3. SheetJS exports table to Excel</div>
+    </div>
+    <div class="info">
+      &#128161; With SDUI, the table structure (columns, types, data) lives in the server’s JSON.
+      SheetJS reads that same JSON to produce the Excel file — no duplication of schema.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>&#128202; Kunden-Übersicht (from SDUI config)</h2>
+    <div class="controls">
+      <button class="btn btn-primary" onclick="loadSDUIConfig()">&#8635; Reload Config</button>
+      <button class="btn btn-success" onclick="exportToExcel()">&#8659; Export to Excel (.xlsx)</button>
+      <button class="btn btn-outline" onclick="exportToCSV()">&#8659; Export to CSV</button>
+    </div>
+    <div id="table-container"></div>
+  </div>
+
+  <div class="card">
+    <h2>&#128196; Code Snippet</h2>
+    <div class="code-block"><span class="cm">// 1. Fetch SDUI config from server</span>
+<span class="kw">const</span> config = <span class="kw">await</span> fetch(<span class="str">'/api/sdui/config'</span>).then(r => r.json());
+<span class="kw">const</span> tableScreen = config.screens.find(s => s.id === <span class="str">'kunden'</span>);
+<span class="kw">const</span> tableComponent = findComponent(tableScreen.root, <span class="str">'data_table'</span>);
+
+<span class="cm">// 2. Build worksheet from SDUI data_table props</span>
+<span class="kw">const</span> { columns, rows } = tableComponent.props;
+<span class="kw">const</span> headers = columns.map(c => c.label);
+<span class="kw">const</span> data = rows.map(row => columns.map(c => row.cells[c.key]?.value ?? <span class="str">''</span>));
+
+<span class="cm">// 3. Export with SheetJS</span>
+<span class="kw">const</span> ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+<span class="kw">const</span> wb = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb, ws, <span class="str">'Kunden'</span>);
+XLSX.writeFile(wb, <span class="str">'kunden-export.xlsx'</span>);</div>
+  </div>
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script>
+// Simulated SDUI config (in production: fetch('/api/sdui/config'))
+const SDUI_CONFIG = {
+  screens: [{
+    id: 'kunden',
+    title: 'Kunden',
+    root: {
+      type: 'stack',
+      children: [
+        { type: 'page_header', props: { title: 'Kunden-Übersicht', subtitle: 'Alle Kunden und Kontakte' } },
+        {
+          type: 'data_table',
+          props: {
+            columns: [
+              { key: 'name',    label: 'Name',       type: 'text' },
+              { key: 'firma',   label: 'Firma',      type: 'text' },
+              { key: 'email',   label: 'E-Mail',     type: 'text' },
+              { key: 'telefon', label: 'Telefon',    type: 'text' },
+              { key: 'status',  label: 'Status',     type: 'badge' },
+              { key: 'umsatz',  label: 'Umsatz',     type: 'currency' },
+              { key: 'seit',    label: 'Kunde seit', type: 'text' }
+            ],
+            rows: [
+              { id:'k1', cells:{ name:{value:'Anna Bauer'},    firma:{value:'Bauer GmbH'},     email:{value:'anna@bauer.de'},    telefon:{value:'+49 30 1234567'}, status:{value:'Aktiv',color:'green'},   umsatz:{value:'48500',format:'EUR'}, seit:{value:'2021'} } },
+              { id:'k2', cells:{ name:{value:'Thomas Müller'},  firma:{value:'Müller AG'},       email:{value:'t.m@mueller.de'},   telefon:{value:'+49 89 7654321'}, status:{value:'Aktiv',color:'green'},   umsatz:{value:'72300',format:'EUR'}, seit:{value:'2020'} } },
+              { id:'k3', cells:{ name:{value:'Sara Klein'},    firma:{value:'Klein & Co.'},    email:{value:'sara@kleinco.de'},  telefon:{value:'+49 40 9876543'}, status:{value:'Ausstehend',color:'yellow'}, umsatz:{value:'15200',format:'EUR'}, seit:{value:'2023'} } },
+              { id:'k4', cells:{ name:{value:'David Braun'},   firma:{value:'Braun Tech'},     email:{value:'d.braun@tech.de'}, telefon:{value:'+49 69 1357924'}, status:{value:'Inaktiv',color:'red'},  umsatz:{value:'9800',format:'EUR'},  seit:{value:'2022'} } },
+              { id:'k5', cells:{ name:{value:'Julia Weber'},   firma:{value:'WebSolutions'},   email:{value:'j.weber@web.de'},  telefon:{value:'+49 30 2468135'}, status:{value:'Aktiv',color:'green'},   umsatz:{value:'61000',format:'EUR'}, seit:{value:'2019'} } },
+              { id:'k6', cells:{ name:{value:'Max Schmidt'},   firma:{value:'Schmidt Logistik'},email:{value:'m.schmidt@log.de'},telefon:{value:'+49 211 3692581'},status:{value:'Aktiv',color:'green'},   umsatz:{value:'34700',format:'EUR'}, seit:{value:'2022'} } },
+              { id:'k7', cells:{ name:{value:'Lisa Fischer'},  firma:{value:'Fischer Design'}, email:{value:'l.fischer@des.de'},telefon:{value:'+49 89 1472583'}, status:{value:'Abgeschlossen',color:'blue'}, umsatz:{value:'28900',format:'EUR'}, seit:{value:'2021'} } },
+              { id:'k8', cells:{ name:{value:'Robert Lange'},  firma:{value:'Lange Consulting'},email:{value:'r.lange@cons.de'},telefon:{value:'+49 40 7531598'}, status:{value:'Aktiv',color:'green'},  umsatz:{value:'91200',format:'EUR'}, seit:{value:'2018'} } }
+            ]
+          }
+        }
+      ]
+    }
+  }]
+};
+
+let currentConfig = SDUI_CONFIG;
+
+function findComponent(root, type) {
+  if (root.type === type) return root;
+  if (root.children) {
+    for (const child of root.children) {
+      const found = findComponent(child, type);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function loadSDUIConfig() {
+  currentConfig = SDUI_CONFIG; // In production: await fetch('/api/sdui/config')
+  renderTable();
+}
+
+function renderTable() {
+  const screen = currentConfig.screens.find(s => s.id === 'kunden');
+  const table = findComponent(screen.root, 'data_table');
+  const { columns, rows } = table.props;
+
+  let html = '<table><thead><tr>';
+  columns.forEach(col => { html += `<th>${col.label}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  rows.forEach(row => {
+    html += '<tr>';
+    columns.forEach(col => {
+      const cell = row.cells[col.key];
+      if (col.type === 'badge' && cell) {
+        const cls = `status-${cell.value.toLowerCase()}`;
+        html += `<td><span class="status ${cls}">${cell.value}</span></td>`;
+      } else if (col.type === 'currency' && cell) {
+        const amount = Number(cell.value).toLocaleString('de-DE', { style: 'currency', currency: cell.format || 'EUR' });
+        html += `<td>${amount}</td>`;
+      } else {
+        html += `<td>${cell?.value ?? ''}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('table-container').innerHTML = html;
+}
+
+function exportToExcel() {
+  const screen = currentConfig.screens.find(s => s.id === 'kunden');
+  const table = findComponent(screen.root, 'data_table');
+  const { columns, rows } = table.props;
+
+  const headers = columns.map(c => c.label);
+  const data = rows.map(row =>
+    columns.map(col => {
+      const cell = row.cells[col.key];
+      if (col.type === 'currency' && cell) return Number(cell.value);
+      return cell?.value ?? '';
+    })
+  );
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+
+  // Style the header row
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: 0, c })];
+    if (cell) cell.s = { font: { bold: true }, fill: { fgColor: { rgb: 'E2E8F0' } } };
+  }
+
+  // Set column widths
+  ws['!cols'] = columns.map(col => ({ wch: Math.max(col.label.length + 4, 16) }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Kunden');
+  XLSX.writeFile(wb, 'byblos-crm-kunden.xlsx');
+}
+
+function exportToCSV() {
+  const screen = currentConfig.screens.find(s => s.id === 'kunden');
+  const table = findComponent(screen.root, 'data_table');
+  const { columns, rows } = table.props;
+
+  const headers = columns.map(c => c.label);
+  const data = rows.map(row => columns.map(col => row.cells[col.key]?.value ?? ''));
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'byblos-crm-kunden.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Init
+loadSDUIConfig();
+</script>
+</body>
+</html>
